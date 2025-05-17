@@ -7,6 +7,18 @@
 </head>
 <body>
     <h1>欢迎来到 Ping and Route Tester</h1>
+    
+    <h2>目标服务器列表</h2>
+    {% if servers %}
+        <ul>
+        {% for server in servers %}
+            <li>{{ server.hostname }} - {{ server.description }}</li>
+        {% endfor %}
+        </ul>
+    {% else %}
+        <p>暂无目标服务器。</p>
+    {% endif %}
+
     <p>这个页面将用于展示 Ping 和路由测试结果。</p>
 </body>
 </html> 
