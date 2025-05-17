@@ -47,7 +47,82 @@
                 {% if traceroute_results %}
                     {% for result_data in traceroute_results %}
                         <h3>测试时间: {{ result_data.raw.test_time }}</h3>
-                        {% if result_data.parsed %}
+                        
+                        {% if result_data.processed_hops_with_location %}
+                            {# Use the new structured data with location or private IP identifier #}
+                            <table class="table is-striped is-narrow is-fullwidth">
+                                <thead>
+                                    <tr>
+                                        <th>跳数</th>
+                                        <th>主机/IP</th>
+                                        <th>地理位置 (国家/城市)</th>
+                                        <th>延迟</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                {% for hop in result_data.processed_hops_with_location %}
+                                    <tr>
+                                        <td>{{ hop.hop_number }}</td>
+                                        <td>
+                                            {% for detail in hop.details %}
+                                                {{ detail.host }}{% if detail.ip and detail.ip != 'N/A' %} ({{ detail.ip }}){% endif %}<br>
+                                            {% endfor %}
+                                        </td>
+                                        <td>
+                                            {% for detail in hop.details %}
+                                                {% if detail.location %}
+                                                    {{ detail.location.country }}{% if detail.location.city %}, {{ detail.location.city }}{% endif %}
+                                                {% elif detail.display_location %}
+                                                    {{ detail.display_location }}
+                                                {% else %}
+                                                    N/A
+                                                {% endif %}<br>
+                                            {% endfor %}
+                                        </td>
+                                        <td>
+                                            {% for detail in hop.details %}
+                                                {{ detail.rtt }}<br>
+                                            {% endfor %}
+                                        </td>
+                                    </tr>
+                                {% endfor %}
+                                </tbody>
+                            </table>
+                        {% elif result_data.fallback_processed_hops %}
+                             {# Fallback to showing original parsed data with private IP identifier if new structured data is not available #}
+                            <table class="table is-striped is-narrow is-fullwidth">
+                                <thead>
+                                    <tr>
+                                        <th>跳数</th>
+                                        <th>主机/IP</th>
+                                        <th>地理位置 (局域网/本地)</th> {# Update header for clarity #}
+                                        <th>延迟</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                {% for hop in result_data.fallback_processed_hops %}
+                                    <tr>
+                                        <td>{{ hop.hop_number }}</td>
+                                        <td>
+                                            {% for detail in hop.details %}
+                                                {{ detail.host }}{% if detail.ip and detail.ip != 'N/A' %} ({{ detail.ip }}){% endif %}<br>
+                                            {% endfor %}
+                                        </td>
+                                         <td>
+                                            {% for detail in hop.details %}
+                                                {% if detail.display_location %}
+                                                     {{ detail.display_location }}
+                                                {% else %}
+                                                     N/A
+                                                {% endif %}<br>
+                                            {% endfor %}
+                                        </td>
+                                    </tr>
+                                {% endfor %}
+                                </tbody>
+                            </table>
+                        {% elif result_data.parsed %}
+                            {# Fallback to showing original parsed data if neither processed data nor fallback processed data is available #}
                             <table class="table is-striped is-narrow is-fullwidth">
                                 <thead>
                                     <tr>
@@ -77,6 +152,7 @@
                         {% else %}
                             <p>无法解析 Traceroute 结果或结果为空。</p>
                         {% endif %}
+                        
                         <h4>原始结果:</h4>
                         <pre>{{ result_data.raw.result_output }}</pre>
                         <hr>

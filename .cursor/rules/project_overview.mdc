@@ -1,0 +1,38 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+# Project Overview
+
+This project is a Python web application built with Flask for scheduled network tests (Ping and Traceroute).
+
+## Key Components:
+
+- **Main Application:** The core application logic, routes, and configuration are in [app.py](mdc:app.py).
+- **Database:**
+    - Uses Flask-SQLAlchemy for database integration.
+    - Database models (`TargetServer`, `PingResult`, `TracerouteResult`) are defined in [app.py](mdc:app.py).
+    - Flask-Migrate is used for database schema management. Migration scripts are located in the `migrations/` directory.
+- **Scheduled Tasks:**
+    - APScheduler is used for running scheduled Ping and Traceroute tests.
+    - The test execution logic is primarily in the `perform_tests` function in [app.py](mdc:app.py).
+- **Caching:**
+    - Redis is used to cache IP geolocation results for Traceroute hops to reduce external API calls.
+    - Redis configuration and caching logic are implemented in [app.py](mdc:app.py).
+- **Frontend:**
+    - Templates for HTML pages are located in the `templates/` directory (e.g., [templates/reports.html](mdc:templates/reports.html), [templates/manage_servers.html](mdc:templates/manage_servers.html), [templates/base.html](mdc:templates/base.html)).
+    - Static assets (like JavaScript) are in the `static/` directory (e.g., [static/js/reports.js](mdc:static/js/reports.js)).
+    - Bulma CSS is used for styling.
+- **Dependencies:** Project dependencies are listed in [requirements.txt](mdc:requirements.txt).
+- **Configuration:** Sensitive information and application settings are managed via a [.env](mdc:.env) file, loaded by `python-dotenv`.
+
+## Setup:
+
+1.  Install dependencies: `pip install -r requirements.txt`
+2.  Set up environment variables in `.env`.
+3.  Initialize and apply database migrations:
+    - `flask db init`
+    - `flask db migrate -m "Initial migration"` (or appropriate message)
+    - `flask db upgrade`
+4.  Run the application: `flask run` (or configured command)

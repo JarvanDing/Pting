@@ -1,0 +1,97 @@
+{% extends 'base.html' %}
+
+{% block title %}性能报表{% endblock %}
+
+{% block content %}
+    <section class="section">
+        <div class="container">
+            <h1 class="title">性能报表</h1>
+
+            {# 这里将是标签页结构 #}
+            <div class="tabs is-boxed is-centered">
+                <ul>
+                    {# Ping 标签页 #}
+                    <li class="is-active" data-tab="ping">
+                        <a>
+                            <span>Ping 报表</span>
+                        </a>
+                    </li>
+                    {# Traceroute 标签页 #}
+                    <li data-tab="traceroute">
+                        <a>
+                            <span>Traceroute 报表</span>
+                        </a>
+                    </li>
+                </ul>
+            </div>
+
+            <div class="px-2 py-2">
+                {# 服务器选择筛选框 #} {# This filter will apply to both tabs #}
+                 <div class="field">
+                        <label class="label">选择服务器:</label>
+                        <div class="control">
+                            <div class="select">
+                                <select id="server-select">
+                                    <option value="">所有服务器</option>
+                                    {% for server in servers %}
+                                        <option value="{{ server.id }}">{{ server.hostname }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+
+                {# Ping 报表内容 #}
+                <div id="ping-tab-content" class="tab-content">
+                    <h2 class="subtitle">Ping 图表和数据</h2>
+                    
+                    {# Ping 结果表格 #}
+                    <div id="ping-results-table">
+                        {# Ping 结果将通过 JavaScript 加载 #}
+                         <p>请选择一个服务器或等待数据加载...</p>
+                    </div>
+
+                    {# 这里将放置 Ping 图表和筛选功能 #}
+                </div>
+
+                {# Traceroute 报表内容 #}
+                <div id="traceroute-tab-content" class="tab-content is-hidden">
+                    <h2 class="subtitle">Traceroute 数据和详细信息</h2>
+                     {# Traceroute 结果表格 #}
+                     <div id="traceroute-results-table">
+                         {# Traceroute 结果将通过 JavaScript 加载 #}
+                          <p>请选择一个服务器或等待数据加载...</p>
+                     </div>
+
+                     {# 这里将放置 Traceroute 数据、详细输出按钮 #}
+                </div>
+            </div>
+
+        </div>
+    </section>
+
+    {# Traceroute 详细输出模态弹窗 #}
+    <div id="traceroute-detail-modal" class="modal">
+        <div class="modal-background"></div>
+        <div class="modal-card">
+            <header class="modal-card-head">
+                <p class="modal-card-title">Traceroute 详细输出</p>
+                <button class="delete" aria-label="close"></button>
+            </header>
+            <section class="modal-card-body">
+                {# Detailed output will be loaded here #}
+                <pre id="traceroute-raw-output"></pre>
+            </section>
+            <footer class="modal-card-foot">
+                <button class="button" id="close-modal">关闭</button>
+            </footer>
+        </div>
+    </div>
+
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+{# Link to the external JavaScript file #}
+<script src="{{ url_for('static', filename='js/reports.js') }}"></script>
+{% endblock %} 

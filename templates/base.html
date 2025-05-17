@@ -5,13 +5,12 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}Ping and Route Tester{% endblock %}</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@1.0.0/css/bulma.min.css">
-    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
-    <nav class="navbar is-info" role="navigation" aria-label="main navigation">
+    <nav class="navbar" role="navigation" aria-label="main navigation">
         <div class="navbar-brand">
             <a class="navbar-item" href="{{ url_for('index') }}">
-                <h1 class="title is-4 has-text-white">Ping Tester</h1>
+                <h1 class="title is-4 has-text-white">性能测试报表</h1>
             </a>
 
             <a role="button" class="navbar-burger" aria-label="menu" aria-expanded="false" data-target="navbarBasicExample">
@@ -24,11 +23,23 @@
         <div id="navbarBasicExample" class="navbar-menu">
             <div class="navbar-start">
                 <a class="navbar-item" href="{{ url_for('index') }}">
-                    首页
+                    报表总览
                 </a>
-                <a class="navbar-item" href="{{ url_for('add_server') }}">
-                    添加服务器
+                <a class="navbar-item" href="{{ url_for('manage_servers') }}">
+                     服务器管理
                 </a>
+            </div>
+
+            <div class="navbar-end">
+                {% if session.get('authenticated') %}
+                <div class="navbar-item">
+                    <div class="buttons">
+                        <a class="button is-small" href="{{ url_for('logout') }}">
+                            退出登录
+                        </a>
+                    </div>
+                </div>
+                {% endif %}
             </div>
         </div>
     </nav>
@@ -36,5 +47,6 @@
     <div class="content">
         {% block content %}{% endblock %}
     </div>
+    {% block scripts %}{% endblock %}
 </body>
 </html> 
