@@ -15,14 +15,26 @@
                         <thead>
                             <tr>
                                 <th>时间</th>
-                                <th>结果</th>
+                                <th>发送</th>
+                                <th>接收</th>
+                                <th>丢包率</th>
+                                <th>最小 RTT</th>
+                                <th>平均 RTT</th>
+                                <th>最大 RTT</th>
+                                <th>原始结果</th>
                             </tr>
                         </thead>
                         <tbody>
-                        {% for result in ping_results %}
+                        {% for result_data in ping_results %}
                             <tr>
-                                <td>{{ result.test_time }}</td>
-                                <td><pre>{{ result.result_output }}</pre></td>
+                                <td>{{ result_data.raw.test_time }}</td>
+                                <td>{{ result_data.parsed.packets_transmitted }}</td>
+                                <td>{{ result_data.parsed.packets_received }}</td>
+                                <td>{{ result_data.parsed.packet_loss }}</td>
+                                <td>{{ result_data.parsed.min_rtt }}</td>
+                                <td>{{ result_data.parsed.avg_rtt }}</td>
+                                <td>{{ result_data.parsed.max_rtt }}</td>
+                                <td><pre>{{ result_data.raw.result_output }}</pre></td>
                             </tr>
                         {% endfor %}
                         </tbody>
@@ -33,22 +45,42 @@
 
                 <h2 class="mt-4">Traceroute 测试结果</h2>
                 {% if traceroute_results %}
-                    <table class="table is-striped is-narrow is-fullwidth">
-                         <thead>
-                            <tr>
-                                <th>时间</th>
-                                <th>结果</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                        {% for result in traceroute_results %}
-                            <tr>
-                                <td>{{ result.test_time }}</td>
-                                <td><pre>{{ result.result_output }}</pre></td>
-                            </tr>
-                        {% endfor %}
-                        </tbody>
-                    </table>
+                    {% for result_data in traceroute_results %}
+                        <h3>测试时间: {{ result_data.raw.test_time }}</h3>
+                        {% if result_data.parsed %}
+                            <table class="table is-striped is-narrow is-fullwidth">
+                                <thead>
+                                    <tr>
+                                        <th>跳数</th>
+                                        <th>主机/IP</th>
+                                        <th>延迟</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                {% for hop in result_data.parsed %}
+                                    <tr>
+                                        <td>{{ hop.hop_number }}</td>
+                                        <td>
+                                            {% for detail in hop.details %}
+                                                {{ detail.host }} ({{ detail.ip }})<br>
+                                            {% endfor %}
+                                        </td>
+                                        <td>
+                                            {% for detail in hop.details %}
+                                                {{ detail.rtt }}<br>
+                                            {% endfor %}
+                                        </td>
+                                    </tr>
+                                {% endfor %}
+                                </tbody>
+                            </table>
+                        {% else %}
+                            <p>无法解析 Traceroute 结果或结果为空。</p>
+                        {% endif %}
+                        <h4>原始结果:</h4>
+                        <pre>{{ result_data.raw.result_output }}</pre>
+                        <hr>
+                    {% endfor %}
                 {% else %}
                     <p>暂无 Traceroute 测试结果。</p>
                 {% endif %}
