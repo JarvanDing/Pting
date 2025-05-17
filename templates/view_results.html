@@ -1,0 +1,60 @@
+{% extends 'base.html' %}
+
+{% block title %}测试结果 - {{ server.hostname }}{% endblock %}
+
+{% block content %}
+    <section class="section">
+        <div class="container">
+            <h1 class="title">{{ server.hostname }} 的测试结果</h1>
+            <p class="subtitle">描述: {{ server.description }}</p>
+
+            <div class="content">
+                <h2>Ping 测试结果</h2>
+                {% if ping_results %}
+                    <table class="table is-striped is-narrow is-fullwidth">
+                        <thead>
+                            <tr>
+                                <th>时间</th>
+                                <th>结果</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                        {% for result in ping_results %}
+                            <tr>
+                                <td>{{ result.test_time }}</td>
+                                <td><pre>{{ result.result_output }}</pre></td>
+                            </tr>
+                        {% endfor %}
+                        </tbody>
+                    </table>
+                {% else %}
+                    <p>暂无 Ping 测试结果。</p>
+                {% endif %}
+
+                <h2 class="mt-4">Traceroute 测试结果</h2>
+                {% if traceroute_results %}
+                    <table class="table is-striped is-narrow is-fullwidth">
+                         <thead>
+                            <tr>
+                                <th>时间</th>
+                                <th>结果</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                        {% for result in traceroute_results %}
+                            <tr>
+                                <td>{{ result.test_time }}</td>
+                                <td><pre>{{ result.result_output }}</pre></td>
+                            </tr>
+                        {% endfor %}
+                        </tbody>
+                    </table>
+                {% else %}
+                    <p>暂无 Traceroute 测试结果。</p>
+                {% endif %}
+            </div>
+
+            <p class="mt-4"><a href="{{ url_for('index') }}">返回列表</a></p>
+        </div>
+    </section>
+{% endblock %} 

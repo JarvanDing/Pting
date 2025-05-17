@@ -1,0 +1,36 @@
+{% extends 'base.html' %}
+
+{% block title %}编辑服务器 - {{ server.hostname }}{% endblock %}
+
+{% block content %}
+    <section class="section">
+        <div class="container">
+            <h1 class="title">编辑目标服务器</h1>
+
+            <form method="POST">
+                <div class="field">
+                    <label class="label" for="hostname">主机名/IP:</label>
+                    <div class="control">
+                        <input class="input" type="text" id="hostname" name="hostname" value="{{ server.hostname }}" required>
+                    </div>
+                </div>
+                <div class="field">
+                    <label class="label" for="description">描述:</label>
+                    <div class="control">
+                        <input class="input" type="text" id="description" name="description" value="{{ server.description if server.description is not none else '' }}">
+                    </div>
+                </div>
+                <div class="field is-grouped">
+                    <div class="control">
+                        <button type="submit" class="button is-primary">更新服务器</button>
+                    </div>
+                    <div class="control">
+                         <a href="{{ url_for('index') }}" class="button is-link is-light">取消</a>
+                    </div>
+                </div>
+            </form>
+
+            <p class="mt-4"><a href="{{ url_for('index') }}">返回列表</a></p>
+        </div>
+    </section>
+{% endblock %} 
