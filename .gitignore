@@ -1,0 +1,20 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Virtual environment
+venv/
+
+# SQLite database file
+*.db
+
+# Flask specific (if any)
+instance/
+.flaskenv
+
+# Other common exclusions
+.env
+.vscode/
+logs/ 
