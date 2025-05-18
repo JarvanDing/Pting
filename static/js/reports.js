@@ -91,10 +91,12 @@ document.addEventListener('DOMContentLoaded', function () {
                     return;
                 }
 
-                // Build the Ping results table HTML using data.items
+                // Use data.items to build the Ping results table HTML
                 // 使用 data.items 构建 Ping 结果表格的 HTML
                 let tableHtml = '<table class="table is-striped is-narrow is-fullwidth"><thead><tr>';
                 tableHtml += '<th>时间</th>';
+                tableHtml += '<th>服务器主机名/IP</th>'; // Add Server Hostname column header
+                tableHtml += '<th>服务器描述</th>'; // Add Server Description column header
                 tableHtml += '<th>丢包率</th>';
                 tableHtml += '<th>最小 RTT</th>';
                 tableHtml += '<th>平均 RTT</th>';
@@ -105,6 +107,8 @@ document.addEventListener('DOMContentLoaded', function () {
                 data.items.forEach(result => {
                     tableHtml += '<tr>';
                     tableHtml += `<td>${new Date(result.test_time).toLocaleString()}</td>`;
+                    tableHtml += `<td>${escapeHTML(result.server_hostname || 'N/A')}</td>`; // Display server hostname
+                    tableHtml += `<td>${escapeHTML(result.server_description || 'N/A')}</td>`; // Display server description
                     // 使用新的字段名称
                     // Use new field names
                     tableHtml += `<td>${result.packet_loss_percent !== null ? result.packet_loss_percent.toFixed(1) + '%' : 'N/A'}</td>`;
@@ -177,14 +181,14 @@ document.addEventListener('DOMContentLoaded', function () {
                     return;
                 }
 
-                // Build the Traceroute results table HTML using data.items
+                // Use data.items to build the Traceroute results table HTML
                 // 使用 data.items 构建 Traceroute 结果表格的 HTML
                 let tableHtml = '<table class="table is-striped is-narrow is-fullwidth"><thead><tr>';
                 tableHtml += '<th>时间</th>';
                 tableHtml += '<th>跳数</th>';
-                tableHtml += '<th>主机/IP</th>';
-                tableHtml += '<th>地理位置 (国家/城市)</th>';
-                tableHtml += '<th>延迟</th>';
+                tableHtml += '<th>主机/IP (详情)</th>'; // Modified header
+                tableHtml += '<th>地理位置 (国家/城市) (详情)</th>'; // Modified header
+                tableHtml += '<th>延迟 (详情)</th>'; // Modified header
                 tableHtml += '<th>详细输出</th>'; // Button column
                 tableHtml += '</tr></thead><tbody>';
 
@@ -193,23 +197,52 @@ document.addEventListener('DOMContentLoaded', function () {
                     // 每个结果可能有多个跳，直接使用 processed_hops
                     if (result.processed_hops) { // 检查 processed_hops 是否存在
                          // Check if processed_hops exists
-                         result.processed_hops.forEach(hop => {
-                              hop.details.forEach(detail => {
-                                   tableHtml += '<tr>';
-                                   // Display time only for the first detail of the first hop of a result
-                                   // 只在结果的第一个跳的第一个详情中显示时间
-                                   // 注意：这里需要一个 helper function 来计算总行数
-                                   // Note: a helper function is needed here to calculate the total number of rows
-                                   const totalDetailsInResult = getDetailCountForProcessedResult(result); 
-                                   if (hop.hop_number === result.processed_hops[0].hop_number && detail === hop.details[0]) {
-                                        tableHtml += `<td rowspan="${totalDetailsInResult}">${new Date(result.test_time).toLocaleString()}</td>`;
-                                   }
-                                   tableHtml += `<td>${hop.hop_number}</td>`;
-                                   tableHtml += `<td>${detail.host || 'N/A'}${detail.ip && detail.ip !== 'N/A' ? ` (${detail.ip})` : ''}</td>`;
+                         
+                         // Calculate the total number of hops for this result for rowspan
+                         // 计算此结果的总跳点数以用于 rowspan
+                         const totalHopsInResult = result.processed_hops.length;
+
+                         result.processed_hops.forEach((hop, hopIndex) => {
+                              // Check if all details for this hop are indicating no response (*)
+                              // 检查此跳点的所有详细信息是否都表示没有响应 (*)
+                              const isNoResponseHop = hop.details.length > 0 && hop.details.every(detail => 
+                                   detail.host === '*' && detail.ip === 'N/A' && detail.rtt === 'N/A'
+                              );
+
+                              if (isNoResponseHop) {
+                                   // If it's a no-response hop, skip rendering this row
+                                   // 如果是没有响应的跳点，跳过渲染此行
+                                   return; // equivalent to continue in forEach
+                              }
+
+                              tableHtml += '<tr>';
                                    
+                              // Display time only for the first hop of a result
+                              // 只在结果的第一个跳中显示时间
+                              if (hopIndex === 0) {
+                                   tableHtml += `<td rowspan="${totalHopsInResult}">${new Date(result.test_time).toLocaleString()}</td>`;
+                              }
+
+                              tableHtml += `<td>${hop.hop_number}</td>`;
+
+                              // Combine details for Host/IP, Location, and RTT into single cells
+                              // 将主机/IP、地理位置和延迟的详细信息组合到单个单元格中
+                              let hostIpHtml = '';
+                              let locationHtml = '';
+                              let rttHtml = '';
+
+                              hop.details.forEach((detail, detailIndex) => {
+                                   if (detailIndex > 0) { // Add line break before adding subsequent details
+                                        hostIpHtml += '<br>';
+                                        locationHtml += '<br>';
+                                        rttHtml += '<br>';
+                                   }
+                                   
+                                   // Host/IP
+                                   hostIpHtml += `${detail.host || 'N/A'}${detail.ip && detail.ip !== 'N/A' ? ` (${detail.ip})` : ''}`;
+
+                                   // Location
                                    let locationText = 'N/A';
-                                   // 优先使用 display_location (用于局域网 IP)，然后是 location 字段
-                                   // Prefer display_location (for local IPs), then location field
                                    if (detail.display_location) {
                                         locationText = detail.display_location;
                                    } else if (detail.location) {
@@ -218,16 +251,23 @@ document.addEventListener('DOMContentLoaded', function () {
                                              locationText += (locationText ? ', ' : '') + detail.location.city;
                                         }
                                    }
-                                   tableHtml += `<td>${locationText}</td>`;
-                                   tableHtml += `<td>${detail.rtt || 'N/A'}</td>`;
+                                   locationHtml += locationText;
 
-                                   // Add a button to view raw output only for the first detail of the first hop of a result
-                                   // 只在结果的第一个跳的第一个详情中添加查看原始输出按钮
-                                   if (hop.hop_number === result.processed_hops[0].hop_number && detail === hop.details[0]) {
-                                        tableHtml += `<td rowspan="${totalDetailsInResult}"><button class="button is-small is-info view-raw-output" data-output="${encodeURIComponent(result.raw_output)}">查看详细</button></td>`;
-                                   }
-                                   tableHtml += '</tr>';
+                                   // RTT
+                                   rttHtml += detail.rtt || 'N/A';
                               });
+
+                              tableHtml += `<td>${hostIpHtml}</td>`;
+                              tableHtml += `<td>${locationHtml}</td>`;
+                              tableHtml += `<td>${rttHtml}</td>`;
+
+                              // Add a button to view raw output only for the first hop of a result
+                              // 只在结果的第一个跳中添加查看原始输出按钮
+                              if (hopIndex === 0) {
+                                   tableHtml += `<td rowspan="${totalHopsInResult}"><button class="button is-small is-info view-raw-output" data-output="${encodeURIComponent(result.raw_output)}">查看详细</button></td>`;
+                              }
+
+                              tableHtml += '</tr>';
                          });
                     } else {
                          // 处理 processed_hops 为空的情况，例如测试失败

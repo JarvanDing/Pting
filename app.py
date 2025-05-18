@@ -268,35 +268,42 @@ def api_results(server_id, test_type):
 
     if test_type == 'ping':
         # 从 PingResult 表中查询数据并分页
-        query = PingResult.query.order_by(PingResult.test_time.desc())
+        # Join with TargetServer to get hostname and description
+        query = db.session.query(PingResult, TargetServer).join(TargetServer)
+        query = query.order_by(PingResult.test_time.desc())
+
         if server_id is not None:
-            query = query.filter_by(target_server_id=server_id)
+            # Filter by target_server_id
+            query = query.filter(PingResult.target_server_id == server_id)
             
         pagination = query.paginate(page=page, per_page=per_page, error_out=False)
-        results = pagination.items
+        # results = pagination.items
 
         # 格式化 Ping 结果
         formatted_results = []
-        for result in results:
+        # Iterate over pairs of PingResult and TargetServer objects
+        for ping_result, target_server in pagination.items:
             # 将 UTC 时间转换为应用配置的本地时区
-            if result.test_time.tzinfo is None: # 如果是 naive 时间
-                 utc_time = pytz.utc.localize(result.test_time) # 视为 UTC 并转换为 timezone-aware
+            if ping_result.test_time.tzinfo is None: # 如果是 naive 时间
+                 utc_time = pytz.utc.localize(ping_result.test_time) # 视为 UTC 并转换为 timezone-aware
             else:
-                 utc_time = result.test_time.astimezone(pytz.utc) # 如果已经是 timezone-aware，确保是 UTC
+                 utc_time = ping_result.test_time.astimezone(pytz.utc) # 如果已经是 timezone-aware，确保是 UTC
                  
             local_time = utc_time.astimezone(APP_TIMEZONE) # 转换为本地时区
             
             formatted_results.append({
-                'id': result.id,
-                'server_id': result.target_server_id,
+                'id': ping_result.id,
+                'server_id': ping_result.target_server_id,
                 'test_time': local_time.isoformat(), # Format datetime as ISO string in local timezone
-                'raw_output': result.raw_output,
-                'packets_transmitted': result.packets_transmitted,
-                'packets_received': result.packets_received,
-                'packet_loss_percent': result.packet_loss_percent,
-                'min_rtt_ms': result.min_rtt_ms,
-                'avg_rtt_ms': result.avg_rtt_ms,
-                'max_rtt_ms': result.max_rtt_ms,
+                'raw_output': ping_result.raw_output,
+                'packets_transmitted': ping_result.packets_transmitted,
+                'packets_received': ping_result.packets_received,
+                'packet_loss_percent': ping_result.packet_loss_percent,
+                'min_rtt_ms': ping_result.min_rtt_ms,
+                'avg_rtt_ms': ping_result.avg_rtt_ms,
+                'max_rtt_ms': ping_result.max_rtt_ms,
+                'server_hostname': target_server.hostname, # Add server hostname
+                'server_description': target_server.description, # Add server description
             })
 
     elif test_type == 'traceroute':
