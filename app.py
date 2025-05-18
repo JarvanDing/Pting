@@ -10,6 +10,8 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import json
 import requests
 import redis
+import ipaddress
+import pytz # 导入 pytz 库用于时区处理
 
 # 从 models.py 导入 db 对象和模型
 from models import db, TargetServer, PingResult, TracerouteResult, TestResult
@@ -29,6 +31,15 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 # 从环境变量获取测试间隔，如果未设置或无效，默认为 300 秒  
 TEST_INTERVAL_SECONDS = int(os.getenv('TEST_INTERVAL_SECONDS', 300)) if os.getenv('TEST_INTERVAL_SECONDS', '').isdigit() else 300
+
+# 从环境变量获取应用时区
+APP_TIMEZONE_STR = os.getenv('TIMEZONE', 'UTC') # 默认为 UTC
+# 尝试获取时区对象，如果无效则使用 UTC
+try:
+    APP_TIMEZONE = pytz.timezone(APP_TIMEZONE_STR)
+except pytz.UnknownTimeZoneError:
+    print(f"警告: 未知的时区 \'{APP_TIMEZONE_STR}\'，将使用 UTC。")
+    APP_TIMEZONE = pytz.utc
 
 # Redis 配置
 REDIS_HOST = os.getenv('REDIS_HOST', 'localhost')
@@ -195,49 +206,53 @@ def view_results(server_id):
         # 将原始结果和解析后的数据一起存储，方便在模板中访问
         parsed_traceroute_results.append({'raw': result, 'parsed': parsed_data})
 
-    # 处理 Traceroute 结果并添加地理位置或私有IP标识
+    # 处理 Ping 结果并转换为本地时区
+    final_ping_results = []
+    for result_data in parsed_ping_results:
+        raw_result = result_data['raw']
+        # 将 UTC 时间转换为应用配置的本地时区
+        # 假设数据库中的 test_time 是 UTC 或 naive 时间，我们先将其视为 UTC
+        if raw_result.test_time.tzinfo is None: # 如果是 naive 时间
+             utc_time = pytz.utc.localize(raw_result.test_time) # 视为 UTC 并转换为 timezone-aware
+        else:
+             utc_time = raw_result.test_time.astimezone(pytz.utc) # 如果已经是 timezone-aware，确保是 UTC
+             
+        local_time = utc_time.astimezone(APP_TIMEZONE) # 转换为本地时区
+        
+        final_ping_results.append({
+            'raw': raw_result,
+            'parsed': result_data['parsed'],
+            'local_test_time': local_time # 添加本地时间字段
+        })
+
+    # 处理 Traceroute 结果并添加地理位置或私有IP标识，同时转换为本地时区
     processed_traceroute_results = []
     for result in traceroute_results:
         processed_data = {'raw': result}
+
+        # 将 UTC 时间转换为应用配置的本地时区
+        if result.test_time.tzinfo is None: # 如果是 naive 时间
+             utc_time = pytz.utc.localize(result.test_time) # 视为 UTC 并转换为 timezone-aware
+        else:
+             utc_time = result.test_time.astimezone(pytz.utc) # 如果已经是 timezone-aware，确保是 UTC
+
+        processed_data['local_test_time'] = utc_time.astimezone(APP_TIMEZONE) # 添加本地时间字段
         
         # 优先使用带地理位置的结构化数据
         if result.traceroute_hops_with_location:
-            # 为每个跳点的详情添加 display_location 字段
-            processed_hops = []
-            for hop in result.traceroute_hops_with_location:
-                processed_details = []
-                for detail in hop['details']:
-                    # 复制 detail 字典以避免修改原始数据
-                    processed_detail = detail.copy()
-                    # 如果没有 location 数据，且 IP 是私有 IP，则设置 display_location
-                    if not processed_detail.get('location') and processed_detail.get('ip') and is_private_ip(processed_detail['ip']):
-                         processed_detail['display_location'] = '局域网'
-                    processed_details.append(processed_detail)
-                processed_hops.append({'hop_number': hop['hop_number'], 'details': processed_details})
-                
-            processed_data['processed_hops_with_location'] = processed_hops # 存储在新的键下
+            # 使用新的辅助函数处理跳点数据
+            processed_data['processed_hops_with_location'] = process_traceroute_hops(result.traceroute_hops_with_location)
         elif result.result_output:
              # 如果没有结构化数据，但有原始输出，则解析原始输出作为回退
-             processed_data['parsed'] = parse_traceroute_output(result.result_output)
-             # 对于回退的解析结果，也可以检查私有 IP
-             if processed_data['parsed']:
-                 fallback_processed_hops = []
-                 for hop in processed_data['parsed']:
-                     fallback_processed_details = []
-                     for detail in hop['details']:
-                          fallback_processed_detail = detail.copy()
-                          if fallback_processed_detail.get('ip') and is_private_ip(fallback_processed_detail['ip']):
-                               fallback_processed_detail['display_location'] = '局域网'
-                          fallback_processed_details.append(fallback_processed_detail)
-                     fallback_processed_hops.append({'hop_number': hop['hop_number'], 'details': fallback_processed_details})
-                 processed_data['fallback_processed_hops'] = fallback_processed_hops # 存储回退的处理数据
-
+             parsed_data = parse_traceroute_output(result.result_output)
+             # 对于回退的解析结果，也使用新的辅助函数处理
+             processed_data['fallback_processed_hops'] = process_traceroute_hops(parsed_data)
 
         processed_traceroute_results.append(processed_data)
 
 
     # 渲染模板并传递数据
-    return render_template('view_results.html', server=server, ping_results=parsed_ping_results, traceroute_results=processed_traceroute_results) # 传递处理后的数据
+    return render_template('view_results.html', server=server, ping_results=final_ping_results, traceroute_results=processed_traceroute_results) # 传递处理后的数据
 
 @app.route('/api/results/<string:test_type>', defaults={'server_id': None})
 @app.route('/api/results/<int:server_id>/<string:test_type>')
@@ -247,21 +262,34 @@ def api_results(server_id, test_type):
     if test_type not in ['ping', 'traceroute']:
         return jsonify({'error': '无效的测试类型'}), 400
 
+    # 获取分页参数
+    page = request.args.get('page', 1, type=int)
+    per_page = request.args.get('per_page', 10, type=int) # 默认每页10条
+
     if test_type == 'ping':
-        # 从 PingResult 表中查询数据
+        # 从 PingResult 表中查询数据并分页
         query = PingResult.query.order_by(PingResult.test_time.desc())
         if server_id is not None:
             query = query.filter_by(target_server_id=server_id)
             
-        results = query.all()
+        pagination = query.paginate(page=page, per_page=per_page, error_out=False)
+        results = pagination.items
 
         # 格式化 Ping 结果
         formatted_results = []
         for result in results:
+            # 将 UTC 时间转换为应用配置的本地时区
+            if result.test_time.tzinfo is None: # 如果是 naive 时间
+                 utc_time = pytz.utc.localize(result.test_time) # 视为 UTC 并转换为 timezone-aware
+            else:
+                 utc_time = result.test_time.astimezone(pytz.utc) # 如果已经是 timezone-aware，确保是 UTC
+                 
+            local_time = utc_time.astimezone(APP_TIMEZONE) # 转换为本地时区
+            
             formatted_results.append({
                 'id': result.id,
                 'server_id': result.target_server_id,
-                'test_time': result.test_time.isoformat(), # Format datetime as ISO string
+                'test_time': local_time.isoformat(), # Format datetime as ISO string in local timezone
                 'raw_output': result.raw_output,
                 'packets_transmitted': result.packets_transmitted,
                 'packets_received': result.packets_received,
@@ -272,56 +300,131 @@ def api_results(server_id, test_type):
             })
 
     elif test_type == 'traceroute':
-        # 从 TracerouteResult 表中查询数据
+        # 从 TracerouteResult 表中查询数据并分页
         query = TracerouteResult.query.order_by(TracerouteResult.test_time.desc())
         if server_id is not None:
             query = query.filter_by(target_server_id=server_id)
             
-        results = query.all()
+        pagination = query.paginate(page=page, per_page=per_page, error_out=False)
+        results = pagination.items
 
         # 格式化 Traceroute 结果
         formatted_results = []
         for result in results:
+             # 将 UTC 时间转换为应用配置的本地时区
+             if result.test_time.tzinfo is None: # 如果是 naive 时间
+                  utc_time = pytz.utc.localize(result.test_time) # 视为 UTC 并转换为 timezone-aware
+             else:
+                  utc_time = result.test_time.astimezone(pytz.utc) # 如果已经是 timezone-aware，确保是 UTC
+
+             local_time = utc_time.astimezone(APP_TIMEZONE) # 转换为本地时区
+
              # TracerouteResult 的 processed_hops_with_location 字段已经包含了处理后的数据
-             # 只需要直接返回即可
+             # 只需要直接返回即可，但需要确保时间已转换为本地时区
+             # 注意：processed_hops_with_location 中的时间是字符串，这里只处理顶层test_time
              formatted_results.append({
                  'id': result.id,
                  'server_id': result.target_server_id,
-                 'test_time': result.test_time.isoformat(),
+                 'test_time': local_time.isoformat(), # Format datetime as ISO string in local timezone
                  'raw_output': result.raw_output,
                  'processed_hops': result.processed_hops_with_location # 直接使用存储的结构化数据
              })
 
-    return jsonify(formatted_results)
+    # 返回分页结果和元数据
+    return jsonify({
+        'items': formatted_results,
+        'total': pagination.total,
+        'page': pagination.page,
+        'per_page': pagination.per_page,
+        'pages': pagination.pages,
+        'has_next': pagination.has_next,
+        'has_prev': pagination.has_prev
+    })
 
 def is_private_ip(ip_address):
-    """检查一个 IPv4 地址是否属于私有网络范围"""
+    """检查一个 IP 地址是否属于私有网络范围 (支持 IPv4 和 IPv6)"""
     if not ip_address or ip_address == 'N/A' or ip_address == '*':
         return False
 
     try:
-        parts = list(map(int, ip_address.split('.')))
-        if len(parts) != 4:
-            return False # 非法的 IPv4 地址格式
-        
-        # 10.0.0.0/8
-        if parts[0] == 10:
-            return True
-        # 172.16.0.0/12
-        if parts[0] == 172 and 16 <= parts[1] <= 31:
-            return True
-        # 192.168.0.0/16
-        if parts[0] == 192 and parts[1] == 168:
-            return True
-        # 环回地址
-        if ip_address == '127.0.0.1':
-            return True
-            
-    except ValueError:
-        # 处理部分不是整数的情况
-        return False
+        # 尝试解析为 IPv4 地址
+        parts_v4 = ip_address.split('.')
+        if len(parts_v4) == 4:
+            # IPv4 地址检查
+            parts = list(map(int, parts_v4))
+            # 10.0.0.0/8
+            if parts[0] == 10:
+                return True
+            # 172.16.0.0/12
+            if parts[0] == 172 and 16 <= parts[1] <= 31:
+                return True
+            # 192.168.0.0/16
+            if parts[0] == 192 and parts[1] == 168:
+                return True
+            # 环回地址
+            if ip_address == '127.0.0.1':
+                return True
+       
+        # 尝试解析为 IPv6 地址
+        # 使用 ipaddress 模块进行更准确的 IPv6 地址类型判断
+        try:
+            ip = ipaddress.ip_address(ip_address)
+            # 检查是否为私有地址 (ULA)
+            if ip.is_private:
+                return True
+            # 检查是否为链路本地地址
+            if ip.is_link_local:
+                return True
+            # 检查是否为环回地址
+            if ip.is_loopback:
+                return True
+        except ValueError:
+            # 如果不是有效的 IPv4 或 IPv6 地址
+            return False
 
-    return False
+    except ValueError:
+        # 处理部分不是整数的情况 (主要针对 IPv4 解析)
+        return False
+    except ImportError:
+        # 如果没有安装 ipaddress 模块，则只进行基本的 IPv4 私有地址检查
+        print("警告: 未安装 'ipaddress' 模块，IPv6 私有地址检查将受限。")
+        # 基本的 IPv6 私有地址前缀检查 (不完全，但能覆盖常见情况)
+        if ip_address.lower().startswith('fc') or ip_address.lower().startswith('fe80:') or ip_address == '::1':
+             return True
+        return False # 如果发生导入错误，且不是基本的 IPv6 私有前缀，则返回 False
+
+    return False # 既不是 IPv4 私有也不是 IPv6 私有
+
+def process_traceroute_hops(hops_list):
+    """
+    处理 Traceroute 跳点列表，检查私有 IP 并添加 display_location 字段。
+    参数:
+        hops_list: 从 parse_traceroute_output 或 result.traceroute_hops_with_location 得到的跳点列表。
+    返回:
+        处理后的跳点列表，每个 detail 字典可能包含 'display_location' 字段。
+    """
+    processed_hops = []
+    if not hops_list:
+        return processed_hops
+
+    for hop in hops_list:
+        processed_details = []
+        for detail in hop.get('details', []):
+            # 复制 detail 字典以避免修改原始数据
+            processed_detail = detail.copy()
+            ip = processed_detail.get('ip')
+            # 如果没有 location 数据（仅存在于 structured data），且 IP 是私有 IP，则设置 display_location
+            # is_private_ip 函数已经处理了 'N/A', '*' 等非 IP 值
+            if not processed_detail.get('location') and ip and is_private_ip(ip):
+                 processed_detail['display_location'] = '局域网'
+            # 如果不是私有 IP 且没有获取到 location (structured data)，或者处理的是 fallback data，
+            # 且 display_location 还没设置，这里也可以根据需要设置默认值或保持 None/N/A。
+            # 当前逻辑只在是私有 IP 且没有 location 时设置 '局域网'。
+            processed_details.append(processed_detail)
+        # 确保 hop_number 存在，即使 detail 列表为空
+        processed_hops.append({'hop_number': hop.get('hop_number', 'N/A'), 'details': processed_details})
+
+    return processed_hops
 
 def get_ip_location(ip_address):
     """使用 ip-api.com 获取 IP 地址的地理位置信息"""
@@ -329,29 +432,29 @@ def get_ip_location(ip_address):
         return None
     
     # 检查是否为环回地址
-    if ip_address == '127.0.0.1':
+    if ip_address == '127.0.0.1': # TODO: Consider IPv6 loopback ::1 as well
         return None
 
-    # 检查是否为私有 IPv4 地址范围 (手动检查)
-    parts = list(map(int, ip_address.split('.'))) if '.' in ip_address else None
+    # 检查是否为私有 IPv4 地址范围 (手动检查) - 移除冗余检查，依赖 get_cached_or_fetch_location 中的 is_private_ip
+    # parts = list(map(int, ip_address.split('.'))) if '.' in ip_address else None
     
-    if parts and len(parts) == 4:
-        # 10.0.0.0/8
-        if parts[0] == 10:
-            print(f"跳过私有 IP 的位置查询: {ip_address}")
-            return None
-        # 172.16.0.0/12
-        if parts[0] == 172 and 16 <= parts[1] <= 31:
-             print(f"跳过私有 IP 的位置查询: {ip_address}")
-             return None
-        # 192.168.0.0/16
-        if parts[0] == 192 and parts[1] == 168:
-             print(f"跳过私有 IP 的位置查询: {ip_address}")
-             return None
+    # if parts and len(parts) == 4:
+    #     # 10.0.0.0/8
+    #     if parts[0] == 10:
+    #         print(f"跳过私有 IP 的位置查询: {ip_address}")
+    #         return None
+    #     # 172.16.0.0/12
+    #     if parts[0] == 172 and 16 <= parts[1] <= 31:
+    #          print(f"跳过私有 IP 的位置查询: {ip_address}")
+    #          return None
+    #     # 192.168.0.0/16
+    #     if parts[0] == 192 and parts[1] == 168:
+    #          print(f"跳过私有 IP 的位置查询: {ip_address}")
+    #          return None
     # 注意: 为了简化，这里不检查 IPv6 私有地址范围 (ULA, link-local)
     # 且 traceroute -n 主要返回 IPv4 地址。
 
-    # 如果不是已知的私有/环回 IP，则继续进行 API 调用
+    # 如果不是已知的非IP/环回地址，则继续进行 API 调用
     api_url = f"http://ip-api.com/json/{ip_address}"
     try:
         response = requests.get(api_url, timeout=5) # 为 API 请求添加超时

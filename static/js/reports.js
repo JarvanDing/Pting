@@ -60,12 +60,12 @@ document.addEventListener('DOMContentLoaded', function () {
 
     // Function to fetch and display Ping results
     // 获取并显示 Ping 结果的函数
-    function fetchAndDisplayPingResults(serverId) {
+    function fetchAndDisplayPingResults(serverId, page = 1, perPage = 10) {
         let apiUrl = '/api/results/';
         if (serverId) {
             apiUrl += `${serverId}/`;
         }
-        apiUrl += 'ping';
+        apiUrl += `ping?page=${page}&per_page=${perPage}`;
 
         // Show loading message
         // 显示加载消息
@@ -78,18 +78,23 @@ document.addEventListener('DOMContentLoaded', function () {
                 }
                 return response.json();
             })
+            // Expecting data to be an object with 'items' and pagination metadata
+            // 期望 data 是一个包含 'items' 和分页元数据的对象
             .then(data => {
-                if (data.length === 0) {
+                // Check if there are items in the current page
+                // 检查当前页是否有数据
+                if (!data.items || data.items.length === 0) {
                     pingResultsTableDiv.innerHTML = '<p>暂无 Ping 测试结果。</p>';
+                     // Still need to render pagination even if no items, to show total pages if any
+                     // 即使没有数据，也需要渲染分页，以显示总页数（如果存在）
+                    renderPaginationControls(data, 'ping', serverId); // Call pagination rendering function
                     return;
                 }
 
-                // Build the Ping results table HTML
-                // 构建 Ping 结果表格的 HTML
+                // Build the Ping results table HTML using data.items
+                // 使用 data.items 构建 Ping 结果表格的 HTML
                 let tableHtml = '<table class="table is-striped is-narrow is-fullwidth"><thead><tr>';
                 tableHtml += '<th>时间</th>';
-                tableHtml += '<th>发送</th>';
-                tableHtml += '<th>接收</th>';
                 tableHtml += '<th>丢包率</th>';
                 tableHtml += '<th>最小 RTT</th>';
                 tableHtml += '<th>平均 RTT</th>';
@@ -97,15 +102,11 @@ document.addEventListener('DOMContentLoaded', function () {
                 tableHtml += '<th>原始结果</th>';
                 tableHtml += '</tr></thead><tbody>';
 
-                data.forEach(result => {
+                data.items.forEach(result => {
                     tableHtml += '<tr>';
                     tableHtml += `<td>${new Date(result.test_time).toLocaleString()}</td>`;
                     // 使用新的字段名称
                     // Use new field names
-                    tableHtml += `<td>${result.packets_transmitted || 'N/A'}</td>`;
-                    tableHtml += `<td>${result.packets_received || 'N/A'}</td>`;
-                    // 格式化丢包率
-                    // Format packet loss percentage
                     tableHtml += `<td>${result.packet_loss_percent !== null ? result.packet_loss_percent.toFixed(1) + '%' : 'N/A'}</td>`;
                     // 格式化 RTT
                     // Format RTT
@@ -132,6 +133,10 @@ document.addEventListener('DOMContentLoaded', function () {
                     });
                 });
 
+                // Render pagination controls after the table is built
+                // 在表格构建后渲染分页控件
+                renderPaginationControls(data, 'ping', serverId);
+
             })
             .catch(error => {
                 console.error('Error fetching ping results:', error);
@@ -141,12 +146,12 @@ document.addEventListener('DOMContentLoaded', function () {
 
     // Function to fetch and display Traceroute results
     // 获取并显示 Traceroute 结果的函数
-    function fetchAndDisplayTracerouteResults(serverId) {
+    function fetchAndDisplayTracerouteResults(serverId, page = 1, perPage = 10) {
         let apiUrl = '/api/results/';
         if (serverId) {
             apiUrl += `${serverId}/`;
         }
-        apiUrl += 'traceroute';
+        apiUrl += `traceroute?page=${page}&per_page=${perPage}`;
 
         // Show loading message
         // 显示加载消息
@@ -159,14 +164,21 @@ document.addEventListener('DOMContentLoaded', function () {
                 }
                 return response.json();
             })
+             // Expecting data to be an object with 'items' and pagination metadata
+             // 期望 data 是一个包含 'items' 和分页元数据的对象
             .then(data => {
-                if (data.length === 0) {
+                // Check if there are items in the current page
+                // 检查当前页是否有数据
+                if (!data.items || data.items.length === 0) {
                     tracerouteResultsTableDiv.innerHTML = '<p>暂无 Traceroute 测试结果。</p>';
+                     // Still need to render pagination even if no items
+                     // 即使没有数据，也需要渲染分页
+                     renderPaginationControls(data, 'traceroute', serverId); // Call pagination rendering function
                     return;
                 }
 
-                // Build the Traceroute results table HTML
-                // 构建 Traceroute 结果表格的 HTML
+                // Build the Traceroute results table HTML using data.items
+                // 使用 data.items 构建 Traceroute 结果表格的 HTML
                 let tableHtml = '<table class="table is-striped is-narrow is-fullwidth"><thead><tr>';
                 tableHtml += '<th>时间</th>';
                 tableHtml += '<th>跳数</th>';
@@ -176,7 +188,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 tableHtml += '<th>详细输出</th>'; // Button column
                 tableHtml += '</tr></thead><tbody>';
 
-                data.forEach(result => {
+                data.items.forEach(result => {
                     // Each result might have multiple hops, use processed_hops directly
                     // 每个结果可能有多个跳，直接使用 processed_hops
                     if (result.processed_hops) { // 检查 processed_hops 是否存在
@@ -236,6 +248,10 @@ document.addEventListener('DOMContentLoaded', function () {
                     });
                 });
 
+                // Render pagination controls after the table is built
+                // 在表格构建后渲染分页控件
+                renderPaginationControls(data, 'traceroute', serverId);
+
             })
             .catch(error => {
                 console.error('Error fetching traceroute results:', error);
@@ -263,29 +279,121 @@ document.addEventListener('DOMContentLoaded', function () {
         return div.innerHTML;
     }
 
-    // Add event listener to server select dropdown
-    // 为服务器选择下拉列表添加事件监听器
-    serverSelect.addEventListener('change', () => {
-        const selectedServerId = serverSelect.value;
-        // Determine the active tab and load data accordingly
-        // 确定活动标签页并相应加载数据
-        const activeTab = document.querySelector('.tabs li.is-active').dataset.tab;
-        if (activeTab === 'ping') {
-            fetchAndDisplayPingResults(selectedServerId);
-        } else if (activeTab === 'traceroute') {
-            fetchAndDisplayTracerouteResults(selectedServerId); // 调用 traceroute 函数
-             // Call traceroute function
+    // Function to render pagination controls
+    // 渲染分页控件的函数
+    // data: API 返回的分页对象
+    // testType: 'ping' 或 'traceroute'
+    // serverId: 当前选中的服务器 ID
+    function renderPaginationControls(data, testType, serverId) {
+        const paginationDivId = `${testType}-results-table`; // Get the ID of the results table div
+        const resultsTableDiv = document.getElementById(paginationDivId);
+
+        // Remove existing pagination controls if any
+        // 移除已有的分页控件（如果存在）
+        const existingPagination = resultsTableDiv.nextElementSibling; // Assuming pagination is right after the table div
+        if (existingPagination && existingPagination.classList.contains('pagination-controls')) {
+            existingPagination.remove();
+        }
+
+        if (data.pages <= 1) {
+            // No need for pagination if there is only one page or less
+            // 如果只有一页或更少，则不需要分页
+            return;
+        }
+
+        let paginationHtml = '<nav class="pagination is-centered pagination-controls" role="navigation" aria-label="pagination"><ul class="pagination-list">';
+
+        // Previous button
+        // 上一页按钮
+        paginationHtml += `<li><a class="pagination-previous ${!data.has_prev ? 'is-disabled' : ''}" data-page="${data.page - 1}" data-type="${testType}" data-server="${serverId}">上一页</a></li>`;
+
+        // Page numbers
+        // 页码
+        // We will display a limited number of pages for simplicity
+        // 为简化，我们只显示有限数量的页码
+        const startPage = Math.max(1, data.page - 2);
+        const endPage = Math.min(data.pages, data.page + 2);
+
+        if (startPage > 1) {
+            paginationHtml += `<li><a class="pagination-link" data-page="1" data-type="${testType}" data-server="${serverId}" aria-label="Goto page 1">1</a></li>`;
+            if (startPage > 2) {
+                paginationHtml += '<li><span class="pagination-ellipsis">&hellip;</span></li>';
+            }
+        }
+
+        for (let i = startPage; i <= endPage; i++) {
+            paginationHtml += `<li><a class="pagination-link ${i === data.page ? 'is-current' : ''}" data-page="${i}" data-type="${testType}" data-server="${serverId}" aria-label="Goto page ${i}" ${i === data.page ? 'aria-current="page"' : ''}>${i}</a></li>`;
+        }
+
+        if (endPage < data.pages) {
+            if (endPage < data.pages - 1) {
+                paginationHtml += '<li><span class="pagination-ellipsis">&hellip;</span></li>';
+            }
+            paginationHtml += `<li><a class="pagination-link" data-page="${data.pages}" data-type="${testType}" data-server="${serverId}" aria-label="Goto page ${data.pages}">${data.pages}</a></li>`;
+        }
+
+        // Next button
+        // 下一页按钮
+        paginationHtml += `<li><a class="pagination-next ${!data.has_next ? 'is-disabled' : ''}" data-page="${data.page + 1}" data-type="${testType}" data-server="${serverId}">下一页</a></li>`;
+
+        paginationHtml += '</ul></nav>';
+
+        // Insert pagination controls after the results table div
+        // 在结果表格 div 之后插入分页控件
+        resultsTableDiv.insertAdjacentHTML('afterend', paginationHtml);
+
+        // Add event listeners to pagination links
+        // 为分页链接添加事件监听器
+        const paginationLinks = resultsTableDiv.nextElementSibling.querySelectorAll('.pagination-link, .pagination-previous, .pagination-next');
+        paginationLinks.forEach(link => {
+            if (!link.classList.contains('is-disabled')) {
+                link.addEventListener('click', (event) => {
+                    event.preventDefault();
+                    const targetPage = parseInt(event.target.dataset.page);
+                    const targetType = event.target.dataset.type;
+                    const targetServer = event.target.dataset.server;
+                    
+                    // Fetch and display data for the target page
+                    // 获取并显示目标页的数据
+                    if (targetType === 'ping') {
+                        fetchAndDisplayPingResults(targetServer, targetPage);
+                    } else if (targetType === 'traceroute') {
+                         fetchAndDisplayTracerouteResults(targetServer, targetPage);
+                    }
+                });
+            }
+        });
+    }
+
+    // Initial data load for the active tab and selected server
+    // 活动标签页和选定服务器的初始数据加载
+    // We need to get the initial active tab
+    // 我们需要获取初始活动标签页
+    const initialActiveTab = document.querySelector('.tabs li.is-active');
+    const initialTarget = initialActiveTab ? initialActiveTab.dataset.tab : 'ping'; // Default to ping if no active tab
+    const initialServerId = serverSelect.value;
+
+    if (initialTarget === 'ping') {
+        fetchAndDisplayPingResults(initialServerId);
+    } else if (initialTarget === 'traceroute') {
+        fetchAndDisplayTracerouteResults(initialServerId);
+    }
+
+    // Add event listener for server select change
+    // 为服务器选择框添加事件监听器
+    serverSelect.addEventListener('change', (event) => {
+        const selectedServerId = event.target.value;
+        // Determine the currently active tab
+        // 确定当前活动标签页
+        const activeTab = document.querySelector('.tabs li.is-active');
+        const currentTestType = activeTab ? activeTab.dataset.tab : 'ping'; // Default to ping
+        
+        // Fetch and display data for the selected server and current active tab, starting from page 1
+        // 获取并显示选定服务器和当前活动标签页的数据，从第一页开始
+        if (currentTestType === 'ping') {
+            fetchAndDisplayPingResults(selectedServerId, 1); // Start from page 1
+        } else if (currentTestType === 'traceroute') {
+             fetchAndDisplayTracerouteResults(selectedServerId, 1); // Start from page 1
         }
     });
-
-    // Initial data load when the page loads
-    // 页面加载时初始化数据加载
-    const initialSelectedServerId = serverSelect.value;
-    const initialActiveTab = document.querySelector('.tabs li.is-active').dataset.tab;
-
-    if (initialActiveTab === 'ping') {
-        fetchAndDisplayPingResults(initialSelectedServerId);
-    } else if (initialActiveTab === 'traceroute') {
-        fetchAndDisplayTracerouteResults(initialSelectedServerId);
-    }
 }); 

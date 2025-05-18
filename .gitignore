@@ -17,4 +17,5 @@ instance/
 # Other common exclusions
 .env
 .vscode/
-logs/ 
+logs/
+.cursor/
